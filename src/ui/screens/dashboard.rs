@@ -10,7 +10,7 @@ use ratatui::{
 
 use crate::app::state::AppState;
 
-pub fn render<B: Backend>(f: &mut Frame<B>, area: Rect, state: &AppState) -> Result<()> {
+pub fn render(f: &mut Frame, area: Rect, state: &AppState) -> Result<()> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -25,7 +25,7 @@ pub fn render<B: Backend>(f: &mut Frame<B>, area: Rect, state: &AppState) -> Res
     Ok(())
 }
 
-fn render_stats_overview<B: Backend>(f: &mut Frame<B>, area: Rect, state: &AppState) -> Result<()> {
+fn render_stats_overview(f: &mut Frame, area: Rect, state: &AppState) -> Result<()> {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -87,7 +87,7 @@ fn render_stats_overview<B: Backend>(f: &mut Frame<B>, area: Rect, state: &AppSt
     Ok(())
 }
 
-fn render_recent_activity<B: Backend>(f: &mut Frame<B>, area: Rect, state: &AppState) -> Result<()> {
+fn render_recent_activity(f: &mut Frame, area: Rect, state: &AppState) -> Result<()> {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([

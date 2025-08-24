@@ -81,11 +81,11 @@ impl KafkaManager {
         self.client.produce_message(topic, key, value).await
     }
 
-    pub async fn start_consuming(&self, topic: &str, group_id: &str) -> Result<()> {
+    pub async fn start_consuming(&mut self, topic: &str, group_id: &str) -> Result<()> {
         self.client.start_consuming(topic, group_id).await
     }
 
-    pub async fn stop_consuming(&self) -> Result<()> {
+    pub async fn stop_consuming(&mut self) -> Result<()> {
         self.client.stop_consuming().await
     }
 

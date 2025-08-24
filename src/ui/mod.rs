@@ -23,7 +23,7 @@ impl UI {
         Self {}
     }
 
-    pub fn render<B: Backend>(&self, f: &mut Frame<B>, state: &AppState) -> Result<()> {
+    pub fn render(&self, f: &mut Frame, state: &AppState) -> Result<()> {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -31,7 +31,7 @@ impl UI {
                 Constraint::Min(0),    // Main content
                 Constraint::Length(3), // Status bar
             ])
-            .split(f.area());
+            .split(f.size());
 
         // Render top tabs
         self.render_tabs(f, chunks[0], state);
@@ -53,13 +53,13 @@ impl UI {
 
         // Render command input if in command mode
         if state.mode == AppMode::Command {
-            self.render_command_input(f, f.area(), state);
+            self.render_command_input(f, f.size(), state);
         }
 
         Ok(())
     }
 
-    fn render_tabs<B: Backend>(&self, f: &mut Frame<B>, area: Rect, state: &AppState) {
+    fn render_tabs(&self, f: &mut Frame, area: Rect, state: &AppState) {
         let titles = vec![
             "Dashboard",
             "Topics",
@@ -89,7 +89,7 @@ impl UI {
         f.render_widget(tabs, area);
     }
 
-    fn render_status_bar<B: Backend>(&self, f: &mut Frame<B>, area: Rect, state: &AppState) {
+    fn render_status_bar(&self, f: &mut Frame, area: Rect, state: &AppState) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -132,7 +132,7 @@ impl UI {
         f.render_widget(right_paragraph, chunks[1]);
     }
 
-    fn render_command_input<B: Backend>(&self, f: &mut Frame<B>, area: Rect, state: &AppState) {
+    fn render_command_input(&self, f: &mut Frame, area: Rect, state: &AppState) {
         let popup_area = self.centered_rect(60, 3, area);
 
         // Clear the area

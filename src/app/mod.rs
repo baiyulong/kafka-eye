@@ -16,7 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::kafka::KafkaManager;
@@ -40,7 +40,12 @@ impl App {
         
         let state = AppState::new();
         let ui = UI::new();
-        let kafka_manager = KafkaManager::new(config).await?;
+        let mut kafka_manager = KafkaManager::new(config).await?;
+        
+        // Try to connect to Kafka
+        if let Err(e) = kafka_manager.connect().await {
+            warn!("Failed to connect to Kafka: {}", e);
+        }
 
         Ok(Self {
             state,
@@ -123,6 +128,11 @@ impl App {
 
             // Small delay to prevent busy waiting
             tokio::time::sleep(Duration::from_millis(16)).await;
+        }
+
+        // Cleanup Kafka connection
+        if let Err(e) = self.kafka_manager.disconnect().await {
+            error!("Failed to disconnect from Kafka: {}", e);
         }
 
         // Cleanup terminal

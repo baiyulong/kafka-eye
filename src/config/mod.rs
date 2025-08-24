@@ -50,6 +50,17 @@ pub struct ProducerConfig {
     pub linger_ms: u32,
 }
 
+impl Default for ProducerConfig {
+    fn default() -> Self {
+        Self {
+            acks: "all".to_string(),
+            compression_type: "none".to_string(),
+            batch_size: 16384,
+            linger_ms: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsumerConfig {
     pub auto_offset_reset: String,
@@ -59,12 +70,35 @@ pub struct ConsumerConfig {
     pub heartbeat_interval_ms: u32,
 }
 
+impl Default for ConsumerConfig {
+    fn default() -> Self {
+        Self {
+            auto_offset_reset: "earliest".to_string(),
+            enable_auto_commit: true,
+            auto_commit_interval_ms: 5000,
+            session_timeout_ms: 30000,
+            heartbeat_interval_ms: 3000,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiConfig {
     pub theme: String,
     pub refresh_interval_ms: u64,
     pub max_messages: usize,
     pub vim_mode: bool,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            theme: "default".to_string(),
+            refresh_interval_ms: 1000,
+            max_messages: 1000,
+            vim_mode: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,7 +240,8 @@ impl Config {
                 brokers: vec!["localhost:9092".to_string()],
                 client_id: "kafka-eye-dev".to_string(),
                 security: None,
-                ..Default::default().kafka
+                producer: ProducerConfig::default(),
+                consumer: ConsumerConfig::default(),
             },
             logging: LoggingConfig {
                 level: "debug".to_string(),
@@ -235,7 +270,8 @@ impl Config {
                         key_password: None,
                     }),
                 }),
-                ..Default::default().kafka
+                producer: ProducerConfig::default(),
+                consumer: ConsumerConfig::default(),
             },
             logging: LoggingConfig {
                 level: "info".to_string(),

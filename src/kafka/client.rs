@@ -90,7 +90,7 @@ impl KafkaClient {
         let timeout = Duration::from_secs(10);
         let metadata = self.admin_client.inner().fetch_metadata(None, timeout)?;
         
-        let topics = metadata
+        let topics: Vec<String> = metadata
             .topics()
             .iter()
             .filter(|topic| !topic.name().starts_with("__")) // Filter out internal topics
