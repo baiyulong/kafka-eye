@@ -1,0 +1,39 @@
+[package]
+name = "kafka-eye"
+version = "0.1.0"
+edition = "2021"
+description = "A terminal-based Kafka client with vim-like interface"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+repository = "https://github.com/yourusername/kafka-eye"
+
+[dependencies]
+# UI
+ratatui = "0.24"
+crossterm = "0.27"
+
+# Async
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# CLI
+clap = { version = "4.0", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Additional utilities
+uuid = { version = "1.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Kafka - temporarily commented out due to Windows compilation issues
+# rdkafka = "0.36"
