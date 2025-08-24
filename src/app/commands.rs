@@ -17,6 +17,7 @@ pub enum Command {
         name: String,
     },
     ListClusters,
+    Status,
     Connect,
     Disconnect,
     Quit,
@@ -70,6 +71,7 @@ impl Command {
                     _ => Command::Unknown(format!("Unknown cluster subcommand: {}", parts[1])),
                 }
             }
+            "status" => Command::Status,
             "connect" => Command::Connect,
             "disconnect" => Command::Disconnect,
             "q" | "quit" => Command::Quit,

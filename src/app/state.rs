@@ -324,6 +324,11 @@ impl AppState {
                 Ok(())
             }
             Command::Quit => Ok(()),
+            Command::Status => {
+                // Status is handled in App, just acknowledge here
+                self.set_status_message("Status information displayed");
+                Ok(())
+            }
             Command::Connect => {
                 // Connection is handled in App, just acknowledge here
                 self.set_status_message("Connection command received");

@@ -39,19 +39,16 @@ impl App {
         
         let mut state = AppState::new();
         let ui = UI::new();
-        let mut kafka_manager = KafkaManager::new(&config).await?;
+        let kafka_manager = KafkaManager::new(&config).await?;
         
-        // Try to connect to Kafka if there's an active cluster
-        if let Some((cluster_name, kafka_config)) = config.get_active_cluster() {
-            if let Err(e) = kafka_manager.connect(kafka_config).await {
-                warn!("Failed to connect to Kafka cluster {}: {}", cluster_name, e);
-                // Don't fail here, just log the warning and continue
-                state.set_connected(false, Some(cluster_name.to_string()));
-            } else {
-                state.set_connected(true, Some(cluster_name.to_string()));
-            }
+        // Initialize state without auto-connecting
+        // Wait for user to manually select and connect to a cluster
+        if let Some((cluster_name, _)) = config.get_active_cluster() {
+            state.set_connected(false, Some(cluster_name.to_string()));
+            state.connection_status = format!("Ready to connect to cluster: {}. Use ':connect' to connect or ':status' for more info.", cluster_name);
         } else {
             state.set_connected(false, None);
+            state.connection_status = "No cluster configured. Use ':cluster add <name> <brokers>' to add a cluster or ':status' for help.".to_string();
         }
 
         Ok(Self {
@@ -328,25 +325,33 @@ impl App {
         match cmd {
             Command::AddCluster { ref name, ref brokers, ref client_id, ref security } => {
                 self.state.handle_command(cmd.clone(), &mut self.config)?;
-                // Try to connect to the new cluster if this is the first one
-                if self.state.current_cluster.is_none() {
-                    self.reconnect().await?;
+                // Don't auto-connect, just update the status
+                if let Some((cluster_name, _)) = self.config.get_active_cluster() {
+                    self.state.connection_status = format!("Cluster '{}' added. Use 'connect' to connect.", cluster_name);
                 }
             }
             Command::RemoveCluster { ref name } => {
                 self.state.handle_command(cmd.clone(), &mut self.config)?;
-                // If we removed the current cluster, try to connect to another one
-                if self.state.current_cluster.is_none() {
-                    self.reconnect().await?;
+                // Don't auto-connect, just update the status
+                if let Some((cluster_name, _)) = self.config.get_active_cluster() {
+                    self.state.connection_status = format!("Ready to connect to cluster: {}", cluster_name);
+                } else {
+                    self.state.connection_status = "No cluster configured. Use 'cluster add' to add a cluster.".to_string();
                 }
             }
             Command::SwitchCluster { ref name } => {
                 self.state.handle_command(cmd.clone(), &mut self.config)?;
-                // Try to connect to the new cluster
-                self.reconnect().await?;
+                // Don't auto-connect when switching clusters, wait for user to use 'connect'
+                if let Some((cluster_name, _)) = self.config.get_active_cluster() {
+                    self.state.set_connected(false, Some(cluster_name.to_string()));
+                    self.state.connection_status = format!("Switched to cluster '{}'. Use 'connect' to connect.", cluster_name);
+                }
             }
             Command::ListClusters => {
                 self.state.handle_command(cmd.clone(), &mut self.config)?;
+            }
+            Command::Status => {
+                self.show_status();
             }
             Command::Connect => {
                 if let Some((cluster_name, kafka_config)) = self.config.get_active_cluster() {
@@ -389,6 +394,47 @@ impl App {
         Ok(())
     }
 
+    fn show_status(&mut self) {
+        let mut status_info = vec![];
+        
+        // Connection status
+        if self.state.connected {
+            status_info.push(format!("✓ Connected to cluster: {}", 
+                self.state.current_cluster.as_deref().unwrap_or("Unknown")));
+        } else {
+            status_info.push("✗ Not connected to any cluster".to_string());
+        }
+        
+        // Active cluster
+        if let Some((cluster_name, _)) = self.config.get_active_cluster() {
+            status_info.push(format!("Active cluster: {}", cluster_name));
+        } else {
+            status_info.push("No active cluster configured".to_string());
+        }
+        
+        // Available clusters
+        let cluster_names: Vec<String> = self.config.clusters.keys().cloned().collect();
+        if !cluster_names.is_empty() {
+            status_info.push(format!("Available clusters: {}", cluster_names.join(", ")));
+        } else {
+            status_info.push("No clusters configured".to_string());
+        }
+        
+        // Next steps
+        status_info.push("".to_string()); // Empty line
+        if !self.state.connected {
+            if self.config.get_active_cluster().is_some() {
+                status_info.push("Next steps: Use 'connect' to connect to the active cluster".to_string());
+            } else if !cluster_names.is_empty() {
+                status_info.push("Next steps: Use 'cluster switch <name>' to select a cluster, then 'connect'".to_string());
+            } else {
+                status_info.push("Next steps: Use 'cluster add <name> <brokers>' to add a cluster".to_string());
+            }
+        }
+        
+        self.state.connection_status = status_info.join(" | ");
+    }
+
     async fn refresh_current_screen(&mut self) -> Result<()> {
         match self.state.current_screen {
             Screen::TopicList => self.refresh_topics().await?,
@@ -418,16 +464,16 @@ impl App {
         Ok(())
     }
 
-    async fn reconnect(&mut self) -> Result<()> {
+    async fn connect_to_active_cluster(&mut self) -> Result<()> {
         if let Some((name, config)) = self.config.get_active_cluster() {
             info!("Connecting to cluster {}", name);
-            // TODO: Update the KafkaManager with the new config
             self.kafka_manager.disconnect().await?;
             self.kafka_manager.connect(config).await?;
             self.state.set_connected(true, Some(name.to_string()));
         } else {
             info!("No active cluster to connect to");
             self.state.set_connected(false, None);
+            self.state.connection_status = "No active cluster configured".to_string();
         }
         Ok(())
     }

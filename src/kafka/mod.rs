@@ -38,23 +38,12 @@ pub struct KafkaManager {
 }
 
 impl KafkaManager {
-    pub async fn new(config: &Config) -> Result<Self> {
-        // Try to create client if there's an active cluster, but don't fail if there isn't
-        let client = if let Some((_, kafka_config)) = config.get_active_cluster() {
-            match client::KafkaClient::new_from_config(kafka_config).await {
-                Ok(client) => Some(client),
-                Err(e) => {
-                    warn!("Failed to initialize Kafka client: {}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
-        
+    pub async fn new(_config: &Config) -> Result<Self> {
+        // Don't create any client connection during initialization
+        // Wait for user to explicitly connect to a cluster
         Ok(Self {
-            client,
-            config: config.clone(),
+            client: None,
+            config: _config.clone(),
         })
     }
 
