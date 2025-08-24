@@ -47,6 +47,7 @@ impl UI {
             Screen::ConsumerGroups => screens::consumer_groups::render(f, chunks[1], state)?,
             Screen::Monitoring => screens::monitoring::render(f, chunks[1], state)?,
             Screen::Settings => screens::settings::render(f, chunks[1], state, config)?,
+            Screen::ClusterManagement => screens::cluster_management::render_cluster_management(f, chunks[1], state)?,
         }
 
         // Render status bar
@@ -65,10 +66,11 @@ impl UI {
             "Dashboard",
             "Topics",
             "Producer",
-            "Consumer", 
+            "Consumer",
             "Groups",
-            "Monitor",
+            "Monitor", 
             "Settings",
+            "Clusters",
         ];
 
         let selected_index = match state.current_screen {
@@ -79,9 +81,8 @@ impl UI {
             Screen::ConsumerGroups => 4,
             Screen::Monitoring => 5,
             Screen::Settings => 6,
-        };
-
-        let tabs = Tabs::new(titles)
+            Screen::ClusterManagement => 7,
+        };        let tabs = Tabs::new(titles)
             .block(Block::default().borders(Borders::ALL).title("Kafka Eye"))
             .style(Style::default().fg(Color::White))
             .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
@@ -108,6 +109,7 @@ impl UI {
                 AppMode::Insert => "INSERT",
                 AppMode::Command => "COMMAND",
                 AppMode::Visual => "VISUAL",
+                AppMode::ClusterForm => "FORM",
             },
             state.selected_topic.as_deref().unwrap_or("No topic selected")
         );
@@ -124,6 +126,7 @@ impl UI {
             AppMode::Insert => "ESC:normal Enter:send",
             AppMode::Command => "ESC:cancel Enter:exec",
             AppMode::Visual => "ESC:normal",
+            AppMode::ClusterForm => "ESC:cancel Tab:field Enter:submit",
         };
 
         let right_paragraph = Paragraph::new(help_text)

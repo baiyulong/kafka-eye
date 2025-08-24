@@ -10,6 +10,7 @@ pub enum AppMode {
     Insert,
     Command,
     Visual,
+    ClusterForm,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +23,7 @@ pub enum Screen {
     ConsumerGroups,
     Monitoring,
     Settings,
+    ClusterManagement,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +67,28 @@ pub struct TopicPartition {
     pub partition: i32,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ClusterForm {
+    pub name: String,
+    pub brokers: String, // comma-separated
+    pub client_id: String,
+    pub security_protocol: String,
+    pub sasl_mechanism: String,
+    pub sasl_username: String,
+    pub sasl_password: String,
+    pub ssl_ca_location: String,
+    pub current_field: usize,
+    pub is_edit_mode: bool,
+    pub original_name: Option<String>, // for edit mode
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClusterFormAction {
+    Add,
+    Edit,
+    Delete,
+}
+
 pub struct AppState {
     pub mode: AppMode,
     pub current_screen: Screen,
@@ -90,6 +114,11 @@ pub struct AppState {
     pub connected: bool,
     pub current_cluster: Option<String>,
     pub connection_status: String,
+    
+    // Cluster management
+    pub cluster_form: ClusterForm,
+    pub cluster_form_action: ClusterFormAction,
+    pub cluster_list: Vec<String>,
     
     // Monitoring
     pub stats: MonitoringStats,
@@ -127,6 +156,10 @@ impl AppState {
             connected: false,
             current_cluster: None,
             connection_status: "Disconnected".to_string(),
+            
+            cluster_form: ClusterForm::default(),
+            cluster_form_action: ClusterFormAction::Add,
+            cluster_list: Vec::new(),
             
             stats: MonitoringStats::default(),
         }
@@ -188,7 +221,8 @@ impl AppState {
             Screen::MessageConsumer => Screen::ConsumerGroups,
             Screen::ConsumerGroups => Screen::Monitoring,
             Screen::Monitoring => Screen::Settings,
-            Screen::Settings => Screen::Dashboard,
+            Screen::Settings => Screen::ClusterManagement,
+            Screen::ClusterManagement => Screen::Dashboard,
             Screen::TopicDetail => Screen::TopicList,
         };
         self.reset_selection();
@@ -196,13 +230,14 @@ impl AppState {
 
     pub fn previous_screen(&mut self) {
         self.current_screen = match self.current_screen {
-            Screen::Dashboard => Screen::Settings,
+            Screen::Dashboard => Screen::ClusterManagement,
             Screen::TopicList => Screen::Dashboard,
             Screen::MessageProducer => Screen::TopicList,
             Screen::MessageConsumer => Screen::MessageProducer,
             Screen::ConsumerGroups => Screen::MessageConsumer,
             Screen::Monitoring => Screen::ConsumerGroups,
             Screen::Settings => Screen::Monitoring,
+            Screen::ClusterManagement => Screen::Settings,
             Screen::TopicDetail => Screen::TopicList,
         };
         self.reset_selection();
@@ -339,12 +374,122 @@ impl AppState {
                 self.set_status_message("Disconnection command received");
                 Ok(())
             }
+            Command::ManageClusters => {
+                // Management is handled in App, just acknowledge here
+                self.set_status_message("Opening cluster management interface");
+                Ok(())
+            }
             Command::Unknown(msg) => Err(anyhow::anyhow!("Unknown command: {}", msg)),
         }
     }
 
     fn set_status_message(&mut self, msg: &str) {
         self.connection_status = msg.to_string();
+    }
+
+    // Cluster form management methods
+    pub fn start_cluster_form(&mut self, action: ClusterFormAction, cluster_name: Option<String>) {
+        self.cluster_form_action = action.clone();
+        self.cluster_form = ClusterForm::default();
+        self.cluster_form.current_field = 0;
+
+        match action {
+            ClusterFormAction::Add => {
+                self.cluster_form.client_id = "kafka-eye".to_string();
+                self.cluster_form.security_protocol = "PLAINTEXT".to_string();
+            }
+            ClusterFormAction::Edit => {
+                if let Some(name) = cluster_name {
+                    self.cluster_form.original_name = Some(name.clone());
+                    self.cluster_form.is_edit_mode = true;
+                    // TODO: Load existing cluster data
+                }
+            }
+            ClusterFormAction::Delete => {
+                if let Some(name) = cluster_name {
+                    self.cluster_form.name = name;
+                }
+            }
+        }
+
+        self.mode = AppMode::ClusterForm;
+        self.current_screen = Screen::ClusterManagement;
+    }
+
+    pub fn exit_cluster_form(&mut self) {
+        self.mode = AppMode::Normal;
+        self.current_screen = Screen::Dashboard;
+        self.cluster_form = ClusterForm::default();
+    }
+
+    pub fn cluster_form_next_field(&mut self) {
+        let max_fields = match self.cluster_form_action {
+            ClusterFormAction::Add | ClusterFormAction::Edit => 7, // name, brokers, client_id, security, sasl_mechanism, username, password
+            ClusterFormAction::Delete => 0, // no fields to navigate for delete
+        };
+        
+        if self.cluster_form.current_field < max_fields {
+            self.cluster_form.current_field += 1;
+        }
+    }
+
+    pub fn cluster_form_prev_field(&mut self) {
+        if self.cluster_form.current_field > 0 {
+            self.cluster_form.current_field -= 1;
+        }
+    }
+
+    pub fn cluster_form_get_current_field_name(&self) -> &str {
+        match self.cluster_form.current_field {
+            0 => "Cluster Name",
+            1 => "Brokers (comma-separated)",
+            2 => "Client ID",
+            3 => "Security Protocol (PLAINTEXT/SASL_PLAINTEXT/SASL_SSL/SSL)",
+            4 => "SASL Mechanism (PLAIN/SCRAM-SHA-256/SCRAM-SHA-512)",
+            5 => "SASL Username",
+            6 => "SASL Password",
+            7 => "SSL CA Location",
+            _ => "Unknown",
+        }
+    }
+
+    pub fn cluster_form_get_current_field_value(&self) -> &str {
+        match self.cluster_form.current_field {
+            0 => &self.cluster_form.name,
+            1 => &self.cluster_form.brokers,
+            2 => &self.cluster_form.client_id,
+            3 => &self.cluster_form.security_protocol,
+            4 => &self.cluster_form.sasl_mechanism,
+            5 => &self.cluster_form.sasl_username,
+            6 => &self.cluster_form.sasl_password,
+            7 => &self.cluster_form.ssl_ca_location,
+            _ => "",
+        }
+    }
+
+    pub fn cluster_form_set_current_field_value(&mut self, value: String) {
+        match self.cluster_form.current_field {
+            0 => self.cluster_form.name = value,
+            1 => self.cluster_form.brokers = value,
+            2 => self.cluster_form.client_id = value,
+            3 => self.cluster_form.security_protocol = value,
+            4 => self.cluster_form.sasl_mechanism = value,
+            5 => self.cluster_form.sasl_username = value,
+            6 => self.cluster_form.sasl_password = value,
+            7 => self.cluster_form.ssl_ca_location = value,
+            _ => {}
+        }
+    }
+
+    pub fn cluster_form_add_char(&mut self, c: char) {
+        let current_value = self.cluster_form_get_current_field_value().to_string();
+        self.cluster_form_set_current_field_value(format!("{}{}", current_value, c));
+    }
+
+    pub fn cluster_form_backspace(&mut self) {
+        let mut current_value = self.cluster_form_get_current_field_value().to_string();
+        current_value.pop();
+        self.cluster_form_set_current_field_value(current_value);
     }
 }
 

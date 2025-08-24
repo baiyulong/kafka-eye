@@ -41,6 +41,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState, config: &Config) -> R
         AppMode::Insert => "Insert Mode - Enter text, ESC to return to normal mode",
         AppMode::Command => "Command Mode - Enter command, ESC to cancel",
         AppMode::Visual => "Visual Mode - Select with hjkl, ESC to cancel",
+        AppMode::ClusterForm => "Form Mode - Fill out cluster information",
     };
     f.render_widget(
         Paragraph::new(mode_text)

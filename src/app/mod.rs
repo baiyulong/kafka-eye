@@ -176,10 +176,16 @@ impl App {
         match input_event {
             InputEvent::Key(key) => {
                 match self.state.mode {
-                    AppMode::Normal => self.handle_normal_mode_key(key).await?,
+                    AppMode::Normal => {
+                        match self.state.current_screen {
+                            Screen::ClusterManagement => self.handle_cluster_management_key(key).await?,
+                            _ => self.handle_normal_mode_key(key).await?,
+                        }
+                    }
                     AppMode::Insert => self.handle_insert_mode_key(key).await?,
                     AppMode::Command => self.handle_command_mode_key(key).await?,
                     AppMode::Visual => self.handle_visual_mode_key(key).await?,
+                    AppMode::ClusterForm => self.handle_cluster_form_key(key).await?,
                 }
             }
             InputEvent::Mouse(_mouse) => {
@@ -350,6 +356,9 @@ impl App {
             Command::ListClusters => {
                 self.state.handle_command(cmd.clone(), &mut self.config)?;
             }
+            Command::ManageClusters => {
+                self.open_cluster_management();
+            }
             Command::Status => {
                 self.show_status();
             }
@@ -433,6 +442,143 @@ impl App {
         }
         
         self.state.connection_status = status_info.join(" | ");
+    }
+
+    fn open_cluster_management(&mut self) {
+        // Load cluster list
+        self.state.cluster_list = self.config.clusters.keys().cloned().collect();
+        self.state.cluster_list.sort();
+        
+        // Start with cluster selection screen
+        self.state.current_screen = Screen::ClusterManagement;
+        self.state.mode = AppMode::Normal;
+        self.state.selected_index = 0;
+    }
+
+    async fn handle_cluster_form_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        use crossterm::event::KeyCode;
+        
+        match key.code {
+            KeyCode::Esc => {
+                self.state.exit_cluster_form();
+            }
+            KeyCode::Tab => {
+                self.state.cluster_form_next_field();
+            }
+            KeyCode::BackTab => {
+                self.state.cluster_form_prev_field();
+            }
+            KeyCode::Enter => {
+                if self.state.cluster_form.current_field == 7 || 
+                   (self.state.cluster_form_action == crate::app::state::ClusterFormAction::Delete) {
+                    // Submit form
+                    self.submit_cluster_form().await?;
+                } else {
+                    self.state.cluster_form_next_field();
+                }
+            }
+            KeyCode::Backspace => {
+                self.state.cluster_form_backspace();
+            }
+            KeyCode::Char(c) => {
+                self.state.cluster_form_add_char(c);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn submit_cluster_form(&mut self) -> Result<()> {
+        use crate::app::state::ClusterFormAction;
+        
+        match self.state.cluster_form_action {
+            ClusterFormAction::Add => {
+                let form = &self.state.cluster_form;
+                if form.name.is_empty() || form.brokers.is_empty() {
+                    self.state.connection_status = "Cluster name and brokers are required".to_string();
+                    return Ok(());
+                }
+                
+                let brokers: Vec<String> = form.brokers.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                
+                self.config.add_cluster(
+                    &form.name,
+                    &brokers,
+                    &form.client_id,
+                    None // TODO: Add security config
+                )?;
+                
+                self.config.save("config.yaml")?;
+                self.state.connection_status = format!("Cluster '{}' added successfully", form.name);
+            }
+            ClusterFormAction::Edit => {
+                // TODO: Implement edit functionality
+                self.state.connection_status = "Edit functionality not yet implemented".to_string();
+            }
+            ClusterFormAction::Delete => {
+                let cluster_name = &self.state.cluster_form.name;
+                self.config.remove_cluster(cluster_name)?;
+                self.config.save("config.yaml")?;
+                self.state.connection_status = format!("Cluster '{}' deleted successfully", cluster_name);
+            }
+        }
+        
+        self.state.exit_cluster_form();
+        Ok(())
+    }
+
+    async fn handle_cluster_management_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        use crossterm::event::KeyCode;
+        
+        match key.code {
+            KeyCode::Esc => {
+                self.state.current_screen = Screen::Dashboard;
+                self.state.mode = AppMode::Normal;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.state.selected_index > 0 {
+                    self.state.selected_index -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.state.selected_index < self.state.cluster_list.len() {
+                    self.state.selected_index += 1;
+                }
+            }
+            KeyCode::Char('a') => {
+                // Add new cluster
+                self.state.start_cluster_form(crate::app::state::ClusterFormAction::Add, None);
+            }
+            KeyCode::Char('e') | KeyCode::Enter => {
+                // Edit selected cluster
+                if self.state.selected_index < self.state.cluster_list.len() {
+                    let cluster_name = self.state.cluster_list[self.state.selected_index].clone();
+                    self.state.start_cluster_form(crate::app::state::ClusterFormAction::Edit, Some(cluster_name));
+                }
+            }
+            KeyCode::Char('d') | KeyCode::Delete => {
+                // Delete selected cluster
+                if self.state.selected_index < self.state.cluster_list.len() {
+                    let cluster_name = self.state.cluster_list[self.state.selected_index].clone();
+                    self.state.start_cluster_form(crate::app::state::ClusterFormAction::Delete, Some(cluster_name));
+                }
+            }
+            KeyCode::Char('s') => {
+                // Switch to selected cluster
+                if self.state.selected_index < self.state.cluster_list.len() {
+                    let cluster_name = self.state.cluster_list[self.state.selected_index].clone();
+                    self.config.set_active_cluster(&cluster_name)?;
+                    self.config.save("config.yaml")?;
+                    self.state.set_connected(false, Some(cluster_name.clone()));
+                    self.state.connection_status = format!("Switched to cluster '{}'. Use 'connect' to connect.", cluster_name);
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     async fn refresh_current_screen(&mut self) -> Result<()> {
