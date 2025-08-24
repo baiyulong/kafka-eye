@@ -37,15 +37,21 @@ impl App {
     pub async fn new(config: Config) -> Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         
-        let state = AppState::new();
+        let mut state = AppState::new();
         let ui = UI::new();
         let mut kafka_manager = KafkaManager::new(&config).await?;
         
-        // Try to connect to Kafka
+        // Try to connect to Kafka if there's an active cluster
         if let Some((cluster_name, kafka_config)) = config.get_active_cluster() {
             if let Err(e) = kafka_manager.connect(kafka_config).await {
                 warn!("Failed to connect to Kafka cluster {}: {}", cluster_name, e);
+                // Don't fail here, just log the warning and continue
+                state.set_connected(false, Some(cluster_name.to_string()));
+            } else {
+                state.set_connected(true, Some(cluster_name.to_string()));
             }
+        } else {
+            state.set_connected(false, None);
         }
 
         Ok(Self {
@@ -341,6 +347,37 @@ impl App {
             }
             Command::ListClusters => {
                 self.state.handle_command(cmd.clone(), &mut self.config)?;
+            }
+            Command::Connect => {
+                if let Some((cluster_name, kafka_config)) = self.config.get_active_cluster() {
+                    match self.kafka_manager.connect(kafka_config).await {
+                        Ok(()) => {
+                            self.state.set_connected(true, Some(cluster_name.to_string()));
+                            info!("Connected to cluster: {}", cluster_name);
+                        }
+                        Err(e) => {
+                            self.state.set_connected(false, Some(cluster_name.to_string()));
+                            self.state.connection_status = format!("Failed to connect: {}", e);
+                            error!("Failed to connect to cluster {}: {}", cluster_name, e);
+                        }
+                    }
+                } else {
+                    self.state.set_connected(false, None);
+                    self.state.connection_status = "No active cluster configured".to_string();
+                    warn!("No active cluster configured");
+                }
+            }
+            Command::Disconnect => {
+                match self.kafka_manager.disconnect().await {
+                    Ok(()) => {
+                        self.state.set_connected(false, self.state.current_cluster.clone());
+                        info!("Disconnected from Kafka cluster");
+                    }
+                    Err(e) => {
+                        self.state.connection_status = format!("Failed to disconnect: {}", e);
+                        error!("Failed to disconnect: {}", e);
+                    }
+                }
             }
             Command::Quit => {
                 self.should_quit = true;

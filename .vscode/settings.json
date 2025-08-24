@@ -1,0 +1,10 @@
+{
+    "terminal.integrated.defaultProfile.windows": "WSL",
+    "terminal.integrated.profiles.windows": {
+        "WSL": {
+            "path": "wsl.exe",
+            "args": [],
+            "icon": "terminal-linux"
+        }
+    }
+}

@@ -63,25 +63,26 @@ impl KafkaClient {
             }
         }
 
-        // Create clients
-        // Create admin client
+        // Create clients - don't test connection here, allow offline initialization
         let admin_client: AdminClient<DefaultClientContext> = client_config.create()?;
         let producer: FutureProducer = client_config.create()?;
 
-        // Test connection
-        let metadata = admin_client.inner().fetch_metadata(None, Duration::from_secs(10))?;
-        debug!("Connected to {} brokers", metadata.brokers().len());
+        info!("Kafka client initialized (not connected)");
 
         Ok(Self {
             admin_client,
             producer,
             consumer: None,
             config: client_config,
-            connected: true,
+            connected: false, // Start as disconnected
         })
     }
 
     pub async fn connect(&mut self) -> Result<()> {
+        // Test connection by fetching metadata
+        let metadata = self.admin_client.inner().fetch_metadata(None, Duration::from_secs(10))?;
+        debug!("Connected to {} brokers", metadata.brokers().len());
+        
         self.connected = true;
         info!("Successfully connected to Kafka cluster");
         Ok(())
@@ -97,7 +98,15 @@ impl KafkaClient {
         Ok(())
     }
 
+    pub fn is_connected(&self) -> bool {
+        self.connected
+    }
+
     pub async fn list_topics(&self) -> Result<Vec<String>> {
+        if !self.connected {
+            return Ok(vec![]); // Return empty list when not connected
+        }
+        
         let timeout = Duration::from_secs(10);
         let metadata = self.admin_client.inner().fetch_metadata(None, timeout)?;
         
@@ -113,6 +122,10 @@ impl KafkaClient {
     }
 
     pub async fn get_topic_metadata(&self, topic_name: &str) -> Result<super::TopicMetadata> {
+        if !self.connected {
+            return Err(anyhow::anyhow!("Not connected to Kafka cluster"));
+        }
+        
         let timeout = Duration::from_secs(10);
         let metadata = self.admin_client.inner().fetch_metadata(Some(topic_name), timeout)?;
         
@@ -139,6 +152,10 @@ impl KafkaClient {
     }
 
     pub async fn create_topic(&self, topic_name: &str, partitions: u32, replication_factor: u16) -> Result<()> {
+        if !self.connected {
+            return Err(anyhow::anyhow!("Not connected to Kafka cluster"));
+        }
+        
         let new_topic = NewTopic::new(
             topic_name,
             partitions as i32,
@@ -232,9 +249,5 @@ impl KafkaClient {
         // For now, we'll return an empty list as rdkafka doesn't have a direct method for this
         warn!("Consumer group listing not fully implemented yet");
         Ok(vec![])
-    }
-
-    pub fn is_connected(&self) -> bool {
-        self.connected
     }
 }

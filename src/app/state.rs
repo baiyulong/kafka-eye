@@ -324,6 +324,16 @@ impl AppState {
                 Ok(())
             }
             Command::Quit => Ok(()),
+            Command::Connect => {
+                // Connection is handled in App, just acknowledge here
+                self.set_status_message("Connection command received");
+                Ok(())
+            }
+            Command::Disconnect => {
+                // Disconnection is handled in App, just acknowledge here  
+                self.set_status_message("Disconnection command received");
+                Ok(())
+            }
             Command::Unknown(msg) => Err(anyhow::anyhow!("Unknown command: {}", msg)),
         }
     }
