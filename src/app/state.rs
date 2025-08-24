@@ -1,5 +1,8 @@
 use std::collections::HashMap;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use crate::config::Config;
+use super::commands::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
@@ -276,6 +279,57 @@ impl AppState {
 
     pub fn update_stats(&mut self, stats: MonitoringStats) {
         self.stats = stats;
+    }
+
+    // Cluster management
+    pub fn handle_command(&mut self, command: Command, config: &mut Config) -> Result<()> {
+        match command {
+            Command::AddCluster { name, brokers, client_id, security } => {
+                config.add_cluster(&name, &brokers, &client_id, security)?;
+                config.save("config.yaml")?;
+                self.set_status_message(&format!("Added cluster {}", name));
+                Ok(())
+            }
+            Command::RemoveCluster { name } => {
+                if let Some(current) = &self.current_cluster {
+                    if current == &name {
+                        self.set_connected(false, None);
+                    }
+                }
+                config.remove_cluster(&name)?;
+                config.save("config.yaml")?;
+                self.set_status_message(&format!("Removed cluster {}", name));
+                Ok(())
+            }
+            Command::SwitchCluster { name } => {
+                if config.has_cluster(&name) {
+                    config.set_active_cluster(&name)?;
+                    config.save("config.yaml")?;
+                    // The actual connection will be handled by the main loop
+                    self.current_cluster = Some(name.clone());
+                    self.set_status_message(&format!("Switching to cluster {}", name));
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("Cluster {} not found", name))
+                }
+            }
+            Command::ListClusters => {
+                let clusters = config.list_clusters();
+                let message = if clusters.is_empty() {
+                    "No clusters configured".to_string()
+                } else {
+                    format!("Configured clusters: {}", clusters.join(", "))
+                };
+                self.set_status_message(&message);
+                Ok(())
+            }
+            Command::Quit => Ok(()),
+            Command::Unknown(msg) => Err(anyhow::anyhow!("Unknown command: {}", msg)),
+        }
+    }
+
+    fn set_status_message(&mut self, msg: &str) {
+        self.connection_status = msg.to_string();
     }
 }
 

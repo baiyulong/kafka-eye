@@ -1,21 +1,39 @@
-kafka:
-  brokers:
-  - localhost:9092
-  client_id: kafka-eye
-  security: null
-  producer:
-    acks: all
-    compression_type: none
-    batch_size: 16384
-    linger_ms: 0
-  consumer:
-    auto_offset_reset: earliest
-    enable_auto_commit: true
-    auto_commit_interval_ms: 5000
-    session_timeout_ms: 30000
-    heartbeat_interval_ms: 3000
+clusters:
+  local:
+    brokers:
+    - localhost:9092
+    client_id: kafka-eye
+    security: null
+    producer:
+      acks: all
+      compression_type: none
+      batch_size: 16384
+      linger_ms: 0
+    consumer:
+      auto_offset_reset: earliest
+      enable_auto_commit: true
+      auto_commit_interval_ms: 5000
+      session_timeout_ms: 30000
+      heartbeat_interval_ms: 3000
+  test:
+    brokers:
+    - 127.0.0.1:9092
+    client_id: kafka-eye-test
+    security: null
+    producer:
+      acks: all
+      compression_type: none
+      batch_size: 16384
+      linger_ms: 0
+    consumer:
+      auto_offset_reset: earliest
+      enable_auto_commit: true
+      auto_commit_interval_ms: 5000
+      session_timeout_ms: 30000
+      heartbeat_interval_ms: 3000
+active_cluster: local
 ui:
-  theme: default
+  theme: Default
   refresh_interval_ms: 1000
   max_messages: 1000
   vim_mode: true

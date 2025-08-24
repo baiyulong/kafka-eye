@@ -41,12 +41,39 @@ async fn main() -> Result<()> {
 
     info!("Starting Kafka Eye TUI client");
 
-    // Load configuration
-    let mut config = Config::load(&cli.config)?;
-    
+    // Create default configuration
+    let mut config = Config {
+        clusters: {
+            let mut clusters = std::collections::HashMap::new();
+            // Add a default local cluster
+            clusters.insert(
+                "local".to_string(),
+                config::KafkaConfig {
+                    brokers: vec!["localhost:9092".to_string()],
+                    client_id: "kafka-eye".to_string(),
+                    security: None,
+                    producer: config::ProducerConfig::default(),
+                    consumer: config::ConsumerConfig::default(),
+                },
+            );
+            clusters
+        },
+        active_cluster: Some("local".to_string()),
+        ui: config::UiConfig {
+            theme: config::Theme::default(),
+            refresh_interval_ms: 1000,
+            max_messages: 1000,
+            vim_mode: true,
+        },
+        logging: config::LoggingConfig {
+            level: "info".to_string(),
+            file: None,
+        },
+    };
+
     // Override broker if provided via CLI
     if let Some(broker) = cli.broker {
-        config.set_default_broker(broker);
+        let _ = config.set_default_broker(broker);
     }
 
     // Create and run the application

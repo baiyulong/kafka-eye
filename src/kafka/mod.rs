@@ -38,18 +38,17 @@ pub struct KafkaManager {
 }
 
 impl KafkaManager {
-    pub async fn new(config: Config) -> Result<Self> {
-        let client = client::KafkaClient::new(&config).await?;
+    pub async fn new(config: &Config) -> Result<Self> {
+        let client = client::KafkaClient::new(config).await?;
         
         Ok(Self {
             client,
-            config,
+            config: config.clone(),
         })
     }
 
-    pub async fn connect(&mut self) -> Result<()> {
-        info!("Connecting to Kafka cluster...");
-        self.client.connect().await?;
+    pub async fn connect(&mut self, config: &crate::config::KafkaConfig) -> Result<()> {
+        self.client = client::KafkaClient::new_from_config(config).await?;
         info!("Successfully connected to Kafka cluster");
         Ok(())
     }

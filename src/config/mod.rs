@@ -1,14 +1,80 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tracing::{info, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    pub kafka: KafkaConfig,
+    pub clusters: HashMap<String, KafkaConfig>,
+    pub active_cluster: Option<String>,
     pub ui: UiConfig,
     pub logging: LoggingConfig,
+}
+
+impl Config {
+    pub fn add_cluster(&mut self, name: &str, brokers: &[String], client_id: &str, security: Option<SecurityConfig>) -> Result<()> {
+        if self.clusters.contains_key(name) {
+            return Err(anyhow::anyhow!("Cluster {} already exists", name));
+        }
+        let config = KafkaConfig {
+            brokers: brokers.to_vec(),
+            client_id: client_id.to_string(),
+            security,
+            producer: ProducerConfig::default(),
+            consumer: ConsumerConfig::default(),
+        };
+        self.clusters.insert(name.to_string(), config);
+        if self.active_cluster.is_none() {
+            self.active_cluster = Some(name.to_string());
+        }
+        Ok(())
+    }
+
+    pub fn remove_cluster(&mut self, name: &str) -> Result<()> {
+        if !self.clusters.contains_key(name) {
+            return Err(anyhow::anyhow!("Cluster {} does not exist", name));
+        }
+        self.clusters.remove(name);
+        if self.active_cluster.as_deref() == Some(name) {
+            self.active_cluster = self.clusters.keys().next().map(|s| s.to_string());
+        }
+        Ok(())
+    }
+
+    pub fn set_default_broker(&mut self, broker: String) -> Result<()> {
+        if let Some(cluster_name) = &self.active_cluster {
+            if let Some(cluster_config) = self.clusters.get_mut(cluster_name) {
+                cluster_config.brokers = vec![broker];
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("Active cluster {} not found", cluster_name))
+            }
+        } else {
+            Err(anyhow::anyhow!("No active cluster"))
+        }
+    }
+
+    pub fn set_active_cluster(&mut self, name: &str) -> Result<()> {
+        if !self.clusters.contains_key(name) {
+            return Err(anyhow::anyhow!("Cluster {} does not exist", name));
+        }
+        self.active_cluster = Some(name.to_string());
+        Ok(())
+    }
+
+    pub fn get_active_cluster(&self) -> Option<(&str, &KafkaConfig)> {
+        self.active_cluster.as_deref().map(|name| (name, &self.clusters[name]))
+    }
+
+    pub fn list_clusters(&self) -> Vec<String> {
+        self.clusters.keys().cloned().collect()
+    }
+
+    pub fn has_cluster(&self, name: &str) -> bool {
+        self.clusters.contains_key(name)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,9 +148,22 @@ impl Default for ConsumerConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Theme {
+    Default,
+    Dark,
+    Light,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Theme::Default
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiConfig {
-    pub theme: String,
+    pub theme: Theme,
     pub refresh_interval_ms: u64,
     pub max_messages: usize,
     pub vim_mode: bool,
@@ -93,7 +172,7 @@ pub struct UiConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: Theme::default(),
             refresh_interval_ms: 1000,
             max_messages: 1000,
             vim_mode: true,
@@ -109,31 +188,22 @@ pub struct LoggingConfig {
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            kafka: KafkaConfig {
+        let mut clusters = HashMap::new();
+        clusters.insert(
+            "local".to_string(),
+            KafkaConfig {
                 brokers: vec!["localhost:9092".to_string()],
                 client_id: "kafka-eye".to_string(),
                 security: None,
-                producer: ProducerConfig {
-                    acks: "all".to_string(),
-                    compression_type: "none".to_string(),
-                    batch_size: 16384,
-                    linger_ms: 0,
-                },
-                consumer: ConsumerConfig {
-                    auto_offset_reset: "earliest".to_string(),
-                    enable_auto_commit: true,
-                    auto_commit_interval_ms: 5000,
-                    session_timeout_ms: 30000,
-                    heartbeat_interval_ms: 3000,
-                },
+                producer: ProducerConfig::default(),
+                consumer: ConsumerConfig::default(),
             },
-            ui: UiConfig {
-                theme: "default".to_string(),
-                refresh_interval_ms: 1000,
-                max_messages: 1000,
-                vim_mode: true,
-            },
+        );
+
+        Self {
+            clusters,
+            active_cluster: Some("local".to_string()),
+            ui: UiConfig::default(),
             logging: LoggingConfig {
                 level: "info".to_string(),
                 file: None,
@@ -175,56 +245,36 @@ impl Config {
         Ok(())
     }
 
-    pub fn set_default_broker(&mut self, broker: String) {
-        self.kafka.brokers = vec![broker];
-    }
-
-    pub fn add_broker(&mut self, broker: String) {
-        if !self.kafka.brokers.contains(&broker) {
-            self.kafka.brokers.push(broker);
-        }
-    }
-
-    pub fn remove_broker(&mut self, broker: &str) {
-        self.kafka.brokers.retain(|b| b != broker);
-    }
-
-    pub fn set_security_config(&mut self, security: SecurityConfig) {
-        self.kafka.security = Some(security);
-    }
-
-    pub fn clear_security_config(&mut self) {
-        self.kafka.security = None;
-    }
-
     pub fn validate(&self) -> Result<()> {
-        if self.kafka.brokers.is_empty() {
-            return Err(anyhow::anyhow!("At least one Kafka broker must be configured"));
-        }
-
-        for broker in &self.kafka.brokers {
-            if !broker.contains(':') {
-                return Err(anyhow::anyhow!("Invalid broker format: {}. Expected format: host:port", broker));
-            }
-        }
-
-        if self.kafka.client_id.is_empty() {
-            return Err(anyhow::anyhow!("Client ID cannot be empty"));
-        }
-
-        // Validate security configuration if present
-        if let Some(security) = &self.kafka.security {
-            match security.protocol.as_str() {
-                "PLAINTEXT" | "SSL" | "SASL_PLAINTEXT" | "SASL_SSL" => {}
-                _ => return Err(anyhow::anyhow!("Invalid security protocol: {}", security.protocol)),
+        for (name, config) in &self.clusters {
+            if config.brokers.is_empty() {
+                return Err(anyhow::anyhow!("Cluster {} must have at least one broker", name));
             }
 
-            if security.protocol.contains("SASL") && security.sasl.is_none() {
-                return Err(anyhow::anyhow!("SASL configuration is required when using SASL protocol"));
+            for broker in &config.brokers {
+                if !broker.contains(':') {
+                    return Err(anyhow::anyhow!("Invalid broker format in cluster {}: {}. Expected format: host:port", name, broker));
+                }
             }
 
-            if security.protocol.contains("SSL") && security.ssl.is_none() {
-                return Err(anyhow::anyhow!("SSL configuration is required when using SSL protocol"));
+            if config.client_id.is_empty() {
+                return Err(anyhow::anyhow!("Client ID cannot be empty for cluster {}", name));
+            }
+
+            // Validate security configuration if present
+            if let Some(security) = &config.security {
+                match security.protocol.as_str() {
+                    "PLAINTEXT" | "SSL" | "SASL_PLAINTEXT" | "SASL_SSL" => {}
+                    _ => return Err(anyhow::anyhow!("Invalid security protocol in cluster {}: {}", name, security.protocol)),
+                }
+
+                if security.protocol.contains("SASL") && security.sasl.is_none() {
+                    return Err(anyhow::anyhow!("SASL configuration is required when using SASL protocol in cluster {}", name));
+                }
+
+                if security.protocol.contains("SSL") && security.ssl.is_none() {
+                    return Err(anyhow::anyhow!("SSL configuration is required when using SSL protocol in cluster {}", name));
+                }
             }
         }
 
@@ -235,25 +285,36 @@ impl Config {
 // Example configuration template for different environments
 impl Config {
     pub fn development() -> Self {
-        Self {
-            kafka: KafkaConfig {
+        let mut clusters = HashMap::new();
+        clusters.insert(
+            "local-dev".to_string(),
+            KafkaConfig {
                 brokers: vec!["localhost:9092".to_string()],
                 client_id: "kafka-eye-dev".to_string(),
                 security: None,
                 producer: ProducerConfig::default(),
                 consumer: ConsumerConfig::default(),
             },
+        );
+
+        Self {
+            clusters,
+            active_cluster: Some("local-dev".to_string()),
             logging: LoggingConfig {
                 level: "debug".to_string(),
                 file: Some("kafka-eye-dev.log".to_string()),
             },
-            ..Default::default()
+            ui: UiConfig::default(),
         }
     }
 
     pub fn production() -> Self {
-        Self {
-            kafka: KafkaConfig {
+        let mut clusters = HashMap::new();
+        
+        // Add production cluster
+        clusters.insert(
+            "prod-cluster".to_string(),
+            KafkaConfig {
                 brokers: vec!["broker1:9092".to_string(), "broker2:9092".to_string(), "broker3:9092".to_string()],
                 client_id: "kafka-eye-prod".to_string(),
                 security: Some(SecurityConfig {
@@ -273,11 +334,16 @@ impl Config {
                 producer: ProducerConfig::default(),
                 consumer: ConsumerConfig::default(),
             },
+        );
+
+        Self {
+            clusters,
+            active_cluster: Some("prod-cluster".to_string()),
             logging: LoggingConfig {
                 level: "info".to_string(),
                 file: Some("/var/log/kafka-eye.log".to_string()),
             },
-            ..Default::default()
+            ui: UiConfig::default(),
         }
     }
 }

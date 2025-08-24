@@ -13,6 +13,7 @@ use ratatui::{
 };
 
 use crate::app::state::{AppMode, AppState, Screen};
+use crate::config::Config;
 
 pub struct UI {
     // UI state if needed
@@ -23,7 +24,7 @@ impl UI {
         Self {}
     }
 
-    pub fn render(&self, f: &mut Frame, state: &AppState) -> Result<()> {
+    pub fn render(&self, f: &mut Frame, state: &AppState, config: &Config) -> Result<()> {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -45,7 +46,7 @@ impl UI {
             Screen::MessageConsumer => screens::messages::render_consumer(f, chunks[1], state)?,
             Screen::ConsumerGroups => screens::consumer_groups::render(f, chunks[1], state)?,
             Screen::Monitoring => screens::monitoring::render(f, chunks[1], state)?,
-            Screen::Settings => screens::settings::render(f, chunks[1], state)?,
+            Screen::Settings => screens::settings::render(f, chunks[1], state, config)?,
         }
 
         // Render status bar

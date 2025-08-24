@@ -1,34 +1,33 @@
+pub mod commands;
 pub mod events;
 pub mod state;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind, EnableMouseCapture, DisableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{
-    backend::{Backend, CrosstermBackend},
-    Terminal,
-};
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::kafka::KafkaManager;
 use crate::ui::UI;
-
+use commands::Command;
 use events::{AppEvent, InputEvent};
 use state::{AppMode, AppState, Screen};
+use std::time::Instant;
+use std::io;
 
 pub struct App {
     state: AppState,
     ui: UI,
     kafka_manager: KafkaManager,
+    config: Config,
     event_rx: mpsc::UnboundedReceiver<AppEvent>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     should_quit: bool,
@@ -40,17 +39,20 @@ impl App {
         
         let state = AppState::new();
         let ui = UI::new();
-        let mut kafka_manager = KafkaManager::new(config).await?;
+        let mut kafka_manager = KafkaManager::new(&config).await?;
         
         // Try to connect to Kafka
-        if let Err(e) = kafka_manager.connect().await {
-            warn!("Failed to connect to Kafka: {}", e);
+        if let Some((cluster_name, kafka_config)) = config.get_active_cluster() {
+            if let Err(e) = kafka_manager.connect(kafka_config).await {
+                warn!("Failed to connect to Kafka cluster {}: {}", cluster_name, e);
+            }
         }
 
         Ok(Self {
             state,
             ui,
             kafka_manager,
+            config,
             event_rx,
             event_tx,
             should_quit: false,
@@ -116,7 +118,7 @@ impl App {
         while !self.should_quit {
             // Draw UI
             terminal.draw(|f| {
-                if let Err(e) = self.ui.render(f, &self.state) {
+                if let Err(e) = self.ui.render(f, &self.state, &self.config) {
                     error!("Failed to render UI: {}", e);
                 }
             })?;
@@ -316,45 +318,37 @@ impl App {
     }
 
     async fn execute_command(&mut self, command: String) -> Result<()> {
-        let parts: Vec<&str> = command.split_whitespace().collect();
-        if parts.is_empty() {
-            return Ok(());
-        }
-
-        match parts[0] {
-            "q" | "quit" => {
+        let cmd = Command::parse(&command);
+        match cmd {
+            Command::AddCluster { ref name, ref brokers, ref client_id, ref security } => {
+                self.state.handle_command(cmd.clone(), &mut self.config)?;
+                // Try to connect to the new cluster if this is the first one
+                if self.state.current_cluster.is_none() {
+                    self.reconnect().await?;
+                }
+            }
+            Command::RemoveCluster { ref name } => {
+                self.state.handle_command(cmd.clone(), &mut self.config)?;
+                // If we removed the current cluster, try to connect to another one
+                if self.state.current_cluster.is_none() {
+                    self.reconnect().await?;
+                }
+            }
+            Command::SwitchCluster { ref name } => {
+                self.state.handle_command(cmd.clone(), &mut self.config)?;
+                // Try to connect to the new cluster
+                self.reconnect().await?;
+            }
+            Command::ListClusters => {
+                self.state.handle_command(cmd.clone(), &mut self.config)?;
+            }
+            Command::Quit => {
                 self.should_quit = true;
             }
-            "topics" => {
-                self.state.current_screen = Screen::TopicList;
-                self.refresh_topics().await?;
-            }
-            "produce" => {
-                if parts.len() > 1 {
-                    self.state.selected_topic = Some(parts[1].to_string());
-                }
-                self.state.current_screen = Screen::MessageProducer;
-            }
-            "consume" => {
-                if parts.len() > 1 {
-                    self.state.selected_topic = Some(parts[1].to_string());
-                }
-                self.state.current_screen = Screen::MessageConsumer;
-            }
-            "groups" => {
-                self.state.current_screen = Screen::ConsumerGroups;
-                self.refresh_consumer_groups().await?;
-            }
-            "connect" => {
-                if parts.len() > 1 {
-                    self.connect_to_cluster(parts[1]).await?;
-                }
-            }
-            _ => {
-                info!("Unknown command: {}", command);
+            Command::Unknown(msg) => {
+                warn!("Unknown command: {}", msg);
             }
         }
-
         Ok(())
     }
 
@@ -384,6 +378,20 @@ impl App {
     async fn refresh_dashboard(&mut self) -> Result<()> {
         info!("Refreshing dashboard...");
         // TODO: Implement dashboard refresh
+        Ok(())
+    }
+
+    async fn reconnect(&mut self) -> Result<()> {
+        if let Some((name, config)) = self.config.get_active_cluster() {
+            info!("Connecting to cluster {}", name);
+            // TODO: Update the KafkaManager with the new config
+            self.kafka_manager.disconnect().await?;
+            self.kafka_manager.connect(config).await?;
+            self.state.set_connected(true, Some(name.to_string()));
+        } else {
+            info!("No active cluster to connect to");
+            self.state.set_connected(false, None);
+        }
         Ok(())
     }
 

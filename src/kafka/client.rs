@@ -22,14 +22,22 @@ pub struct KafkaClient {
 
 impl KafkaClient {
     pub async fn new(config: &Config) -> Result<Self> {
+        if let Some((_, kafka_config)) = config.get_active_cluster() {
+            Self::new_from_config(kafka_config).await
+        } else {
+            Err(anyhow::anyhow!("No active cluster configured"))
+        }
+    }
+
+    pub async fn new_from_config(config: &crate::config::KafkaConfig) -> Result<Self> {
         let mut client_config = ClientConfig::new();
         
         // Basic configuration
-        client_config.set("bootstrap.servers", &config.kafka.brokers.join(","));
-        client_config.set("client.id", &config.kafka.client_id);
+        client_config.set("bootstrap.servers", &config.brokers.join(","));
+        client_config.set("client.id", &config.client_id);
         
         // Security configuration
-        if let Some(security_config) = &config.kafka.security {
+        if let Some(security_config) = &config.security {
             client_config.set("security.protocol", &security_config.protocol);
             
             if let Some(sasl_config) = &security_config.sasl {
@@ -56,21 +64,24 @@ impl KafkaClient {
         }
 
         // Create clients
+        // Create admin client
         let admin_client: AdminClient<DefaultClientContext> = client_config.create()?;
         let producer: FutureProducer = client_config.create()?;
+
+        // Test connection
+        let metadata = admin_client.inner().fetch_metadata(None, Duration::from_secs(10))?;
+        debug!("Connected to {} brokers", metadata.brokers().len());
 
         Ok(Self {
             admin_client,
             producer,
             consumer: None,
             config: client_config,
-            connected: false,
+            connected: true,
         })
     }
 
     pub async fn connect(&mut self) -> Result<()> {
-        // Test connection by listing topics
-        let _topics = self.list_topics().await?;
         self.connected = true;
         info!("Successfully connected to Kafka cluster");
         Ok(())
@@ -101,7 +112,7 @@ impl KafkaClient {
         Ok(topics)
     }
 
-    pub async fn get_topic_metadata(&self, topic_name: &str) -> Result<TopicMetadata> {
+    pub async fn get_topic_metadata(&self, topic_name: &str) -> Result<super::TopicMetadata> {
         let timeout = Duration::from_secs(10);
         let metadata = self.admin_client.inner().fetch_metadata(Some(topic_name), timeout)?;
         
@@ -109,7 +120,7 @@ impl KafkaClient {
             let partitions = topic
                 .partitions()
                 .iter()
-                .map(|p| PartitionMetadata {
+                .map(|p| super::PartitionMetadata {
                     id: p.id(),
                     leader: if p.leader() >= 0 { Some(p.leader()) } else { None },
                     replicas: p.replicas().to_vec(),
@@ -117,7 +128,7 @@ impl KafkaClient {
                 })
                 .collect();
 
-            Ok(TopicMetadata {
+            Ok(super::TopicMetadata {
                 name: topic_name.to_string(),
                 partitions,
                 configs: HashMap::new(), // TODO: Fetch topic configs
