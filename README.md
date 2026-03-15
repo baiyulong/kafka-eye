@@ -15,20 +15,37 @@ A powerful TUI (Terminal User Interface) Kafka client built in Rust. Manage and 
 ## Prerequisites
 
 - Rust 1.70+
-- CMake (for building librdkafka)
-- C compiler (gcc/clang)
+- CMake
+- C compiler (gcc/clang on Linux/macOS, MSVC on Windows)
 
 ### Install build dependencies
 
 **Ubuntu/Debian:**
 ```bash
-apt-get install cmake build-essential libcurl4-openssl-dev libssl-dev libsasl2-dev pkg-config
+apt-get install cmake build-essential libcurl4-openssl-dev pkg-config
 ```
 
 **macOS:**
 ```bash
-brew install cmake openssl
+brew install cmake
 ```
+
+**Windows (PowerShell as Admin):**
+```powershell
+# Install CMake
+winget install Kitware.CMake
+
+# Install Strawberry Perl (required to compile OpenSSL from source)
+winget install StrawberryPerl.StrawberryPerl
+
+# Restart PowerShell after installing, then build
+cargo run
+```
+
+> **Note for Windows**: OpenSSL is compiled from source automatically via `ssl-vendored`.
+> This requires Perl. [Strawberry Perl](https://strawberryperl.com) is the standard
+> choice in the Rust/Windows ecosystem. After installing, restart your terminal so
+> `perl` is on `PATH`.
 
 ## Build
 
