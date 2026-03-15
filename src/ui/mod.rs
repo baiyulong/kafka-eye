@@ -87,6 +87,9 @@ fn render_cluster_select(app: &App, frame: &mut Frame) {
                 crate::config::AuthConfig::SaslScram256 { .. } => "🔐 SCRAM-256",
                 crate::config::AuthConfig::SaslScram512 { .. } => "🔐 SCRAM-512",
                 crate::config::AuthConfig::Ssl { .. } => "🔒 SSL",
+                crate::config::AuthConfig::SaslSslPlain { .. } => "🔒 SASL_SSL/PLAIN",
+                crate::config::AuthConfig::SaslSslScram256 { .. } => "🔒 SASL_SSL/256",
+                crate::config::AuthConfig::SaslSslScram512 { .. } => "🔒 SASL_SSL/512",
             };
             let style = if i == app.cluster_select_index {
                 Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)

@@ -169,6 +169,9 @@ impl EditClusterDialog {
                 client_cert.clone().unwrap_or_default(),
                 client_key.clone().unwrap_or_default(),
             ),
+            AuthConfig::SaslSslPlain { username, password, ca_cert } => (5, username.clone(), password.clone(), ca_cert.clone().unwrap_or_default(), String::new(), String::new()),
+            AuthConfig::SaslSslScram256 { username, password, ca_cert } => (6, username.clone(), password.clone(), ca_cert.clone().unwrap_or_default(), String::new(), String::new()),
+            AuthConfig::SaslSslScram512 { username, password, ca_cert } => (7, username.clone(), password.clone(), ca_cert.clone().unwrap_or_default(), String::new(), String::new()),
         };
         Self {
             name: config.name.clone(),
@@ -186,6 +189,7 @@ impl EditClusterDialog {
 
     pub fn to_config(&self) -> ClusterConfig {
         use crate::config::AuthConfig;
+        let ca = if self.ca_cert.is_empty() { None } else { Some(self.ca_cert.clone()) };
         let auth = match self.auth_type {
             1 => AuthConfig::SaslPlain {
                 username: self.username.clone(),
@@ -200,9 +204,24 @@ impl EditClusterDialog {
                 password: self.password.clone(),
             },
             4 => AuthConfig::Ssl {
-                ca_cert: if self.ca_cert.is_empty() { None } else { Some(self.ca_cert.clone()) },
+                ca_cert: ca,
                 client_cert: if self.client_cert.is_empty() { None } else { Some(self.client_cert.clone()) },
                 client_key: if self.client_key.is_empty() { None } else { Some(self.client_key.clone()) },
+            },
+            5 => AuthConfig::SaslSslPlain {
+                username: self.username.clone(),
+                password: self.password.clone(),
+                ca_cert: ca,
+            },
+            6 => AuthConfig::SaslSslScram256 {
+                username: self.username.clone(),
+                password: self.password.clone(),
+                ca_cert: ca,
+            },
+            7 => AuthConfig::SaslSslScram512 {
+                username: self.username.clone(),
+                password: self.password.clone(),
+                ca_cert: ca,
             },
             _ => AuthConfig::None,
         };

@@ -124,6 +124,33 @@ fn build_client_config(cluster: &ClusterConfig) -> ClientConfig {
                 config.set("ssl.key.location", key);
             }
         }
+        AuthConfig::SaslSslPlain { username, password, ca_cert } => {
+            config.set("security.protocol", "SASL_SSL");
+            config.set("sasl.mechanism", "PLAIN");
+            config.set("sasl.username", username);
+            config.set("sasl.password", password);
+            if let Some(ca) = ca_cert {
+                config.set("ssl.ca.location", ca);
+            }
+        }
+        AuthConfig::SaslSslScram256 { username, password, ca_cert } => {
+            config.set("security.protocol", "SASL_SSL");
+            config.set("sasl.mechanism", "SCRAM-SHA-256");
+            config.set("sasl.username", username);
+            config.set("sasl.password", password);
+            if let Some(ca) = ca_cert {
+                config.set("ssl.ca.location", ca);
+            }
+        }
+        AuthConfig::SaslSslScram512 { username, password, ca_cert } => {
+            config.set("security.protocol", "SASL_SSL");
+            config.set("sasl.mechanism", "SCRAM-SHA-512");
+            config.set("sasl.username", username);
+            config.set("sasl.password", password);
+            if let Some(ca) = ca_cert {
+                config.set("ssl.ca.location", ca);
+            }
+        }
     }
 
     config

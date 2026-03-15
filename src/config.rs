@@ -37,6 +37,21 @@ pub enum AuthConfig {
         client_cert: Option<String>,
         client_key: Option<String>,
     },
+    SaslSslPlain {
+        username: String,
+        password: String,
+        ca_cert: Option<String>,
+    },
+    SaslSslScram256 {
+        username: String,
+        password: String,
+        ca_cert: Option<String>,
+    },
+    SaslSslScram512 {
+        username: String,
+        password: String,
+        ca_cert: Option<String>,
+    },
 }
 
 impl Default for AppConfig {

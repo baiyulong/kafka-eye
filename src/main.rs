@@ -700,6 +700,7 @@ fn handle_dialog_key(
             let max_fields = match d.auth_type {
                 1 | 2 | 3 => 5, // name, brokers, auth, user, pass
                 4 => 6,         // name, brokers, auth, ca, cert, key
+                5 | 6 | 7 => 6, // name, brokers, auth, user, pass, ca_cert(opt)
                 _ => 3,         // name, brokers, auth
             };
             match key.code {
@@ -711,12 +712,12 @@ fn handle_dialog_key(
                 }
                 KeyCode::Left => {
                     if d.focused_field == 2 {
-                        d.auth_type = if d.auth_type == 0 { 4 } else { d.auth_type - 1 };
+                        d.auth_type = if d.auth_type == 0 { 7 } else { d.auth_type - 1 };
                     }
                 }
                 KeyCode::Right => {
                     if d.focused_field == 2 {
-                        d.auth_type = (d.auth_type + 1) % 5;
+                        d.auth_type = (d.auth_type + 1) % 8;
                     }
                 }
                 KeyCode::Enter => {
@@ -741,17 +742,19 @@ fn handle_dialog_key(
                         1 => d.brokers.push(c),
                         2 => {} // auth type uses arrows
                         3 => match d.auth_type {
-                            1 | 2 | 3 => d.username.push(c),
+                            1 | 2 | 3 | 5 | 6 | 7 => d.username.push(c),
                             4 => d.ca_cert.push(c),
                             _ => {}
                         },
                         4 => match d.auth_type {
-                            1 | 2 | 3 => d.password.push(c),
+                            1 | 2 | 3 | 5 | 6 | 7 => d.password.push(c),
                             4 => d.client_cert.push(c),
                             _ => {}
                         },
-                        5 => if d.auth_type == 4 {
-                            d.client_key.push(c);
+                        5 => match d.auth_type {
+                            4 => d.client_key.push(c),
+                            5 | 6 | 7 => d.ca_cert.push(c),
+                            _ => {}
                         },
                         _ => {}
                     }
@@ -762,17 +765,19 @@ fn handle_dialog_key(
                         1 => { d.brokers.pop(); }
                         2 => {}
                         3 => match d.auth_type {
-                            1 | 2 | 3 => { d.username.pop(); }
+                            1 | 2 | 3 | 5 | 6 | 7 => { d.username.pop(); }
                             4 => { d.ca_cert.pop(); }
                             _ => {}
                         },
                         4 => match d.auth_type {
-                            1 | 2 | 3 => { d.password.pop(); }
+                            1 | 2 | 3 | 5 | 6 | 7 => { d.password.pop(); }
                             4 => { d.client_cert.pop(); }
                             _ => {}
                         },
-                        5 => if d.auth_type == 4 {
-                            d.client_key.pop();
+                        5 => match d.auth_type {
+                            4 => { d.client_key.pop(); }
+                            5 | 6 | 7 => { d.ca_cert.pop(); }
+                            _ => {}
                         },
                         _ => {}
                     }

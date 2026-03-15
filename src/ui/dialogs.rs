@@ -244,7 +244,8 @@ fn render_edit_cluster(dialog: &EditClusterDialog, frame: &mut Frame) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let auth_types = ["None", "SASL/PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "SSL/TLS"];
+    let auth_types = ["None", "SASL/PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "SSL/TLS",
+                      "SASL_SSL/PLAIN", "SASL_SSL/SCRAM-256", "SASL_SSL/SCRAM-512"];
     let auth_display = format!("{} (←/→ to change)", auth_types.get(dialog.auth_type).unwrap_or(&"Unknown"));
 
     let mut constraints = vec![
@@ -253,14 +254,18 @@ fn render_edit_cluster(dialog: &EditClusterDialog, frame: &mut Frame) {
         Constraint::Length(3), // auth type
     ];
 
-    let needs_credentials = matches!(dialog.auth_type, 1 | 2 | 3);
-    let needs_ssl = dialog.auth_type == 4;
+    let needs_credentials = matches!(dialog.auth_type, 1 | 2 | 3 | 5 | 6 | 7);
+    let needs_ca = matches!(dialog.auth_type, 5 | 6 | 7);
+    let needs_ssl_certs = dialog.auth_type == 4;
 
     if needs_credentials {
         constraints.push(Constraint::Length(3)); // username
         constraints.push(Constraint::Length(3)); // password
     }
-    if needs_ssl {
+    if needs_ca {
+        constraints.push(Constraint::Length(3)); // ca_cert path (optional)
+    }
+    if needs_ssl_certs {
         constraints.push(Constraint::Length(3)); // ca_cert
         constraints.push(Constraint::Length(3)); // client_cert
         constraints.push(Constraint::Length(3)); // client_key
@@ -285,7 +290,11 @@ fn render_edit_cluster(dialog: &EditClusterDialog, frame: &mut Frame) {
         render_input_field(frame, chunks[field_idx], "Password", &"*".repeat(dialog.password.len()), dialog.focused_field == 4);
         field_idx += 1;
     }
-    if needs_ssl {
+    if needs_ca {
+        render_input_field(frame, chunks[field_idx], "CA Cert Path (optional)", &dialog.ca_cert, dialog.focused_field == 5);
+        field_idx += 1;
+    }
+    if needs_ssl_certs {
         render_input_field(frame, chunks[field_idx], "CA Cert Path", &dialog.ca_cert, dialog.focused_field == 3);
         field_idx += 1;
         render_input_field(frame, chunks[field_idx], "Client Cert Path", &dialog.client_cert, dialog.focused_field == 4);
